@@ -2,8 +2,9 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth, db } from '@/lib/firebase';
+import { doc, getDoc } from 'firebase/firestore'; 
 import Image from 'next/image';
 import { Lock, Loader2, Mail, LogIn, ShieldCheck, Eye, EyeOff } from 'lucide-react';
 import Link from 'next/link';
@@ -23,10 +24,41 @@ export default function AdminLoginPage() {
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/admin/dashboard'); 
+      // Login ke Firebase Auth (Cek password)
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // AMBIL DATA USER DARI DATABASE UNTUK CEK ROLE
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        
+        // LOGIKA PENGECEKAN ROLE
+        // Jika role BUKAN 'admin' dan BUKAN 'guru'
+        if (userData.role !== 'admin' && userData.role !== 'guru') {
+           // TENDANG KELUAR (Logout Paksa)
+           await signOut(auth); 
+           
+           // Tampilkan Pesan Error Merah
+           setError('Akses Ditolak: Akun ini adalah akun Siswa. Silakan login di halaman Siswa.');
+           setLoading(false);
+           return; 
+        }
+
+        // Jika lolos pengecekan (Benar Admin), baru boleh masuk
+        router.push('/admin/dashboard'); 
+      } else {
+        // Jika akun ada di Auth tapi tidak ada datanya di Firestore
+        await signOut(auth);
+        setError('Data pengguna tidak ditemukan. Hubungi IT Support.');
+        setLoading(false);
+      }
+
     } catch (err: any) {
       console.error("Login Error:", err);
+      // Handling Error Firebase
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Email atau kata sandi salah.');
       } else if (err.code === 'auth/too-many-requests') {
@@ -40,21 +72,22 @@ export default function AdminLoginPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 font-sans relative overflow-hidden">
-      {/* BACKGROUND IMAGE FULL SCREEN */}
-          <div className="absolute inset-0 z-0">
-            <Image 
-              src="/smp gelora.png" 
-              alt="Gedung SMP Gelora" 
-              fill
-              className="object-cover object-center"
-              priority
-            />
-          </div>
+      
+      {/* BACKGROUND IMAGE */}
+      <div className="absolute inset-0 z-0">
+        <Image 
+            src="/smp gelora.png" 
+            alt="Gedung SMP Gelora" 
+            fill
+            className="object-cover object-center"
+            priority
+        />
+      </div>
 
       {/* Container Utama */}
       <div className="w-full max-w-5xl bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-slate-900/10 overflow-hidden flex flex-col md:flex-row border border-white/50 relative z-10">
         
-        {/* BAGIAN 1: VISUAL / BRANDING */}
+        {/* BAGIAN KIRI: BRANDING */}
         <div className="md:w-5/12 bg-gradient-to-br from-slate-700 via-slate-800 to-gray-900 p-8 md:p-12 flex flex-col justify-center items-center text-center text-white relative overflow-hidden min-h-[300px] md:min-h-full">
              <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
              <div className="absolute top-0 right-0 w-40 h-40 bg-orange-500/20 rounded-full blur-3xl -mr-10 -mt-10"></div>
@@ -79,13 +112,14 @@ export default function AdminLoginPage() {
              </div>
         </div>
 
-        {/* BAGIAN 2: FORMULIR LOGIN */}
+        {/* BAGIAN KANAN: FORM LOGIN */}
         <div className="md:w-7/12 p-8 md:p-12 bg-white flex flex-col justify-center">
             <div className="mb-8">
                 <h1 className="text-3xl font-extrabold text-gray-800">Login <span className="text-slate-600">Staff</span></h1>
                 <p className="text-sm text-gray-600 mt-2 font-medium">Silakan masuk dengan akun Guru atau BK Anda.</p>
             </div>
             
+            {/* PESAN ERROR AKAN MUNCUL DI SINI */}
             {error && (
                 <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 rounded-xl mb-6 text-sm flex items-start animate-pulse shadow-sm" role="alert">
                     <p className="font-medium">{error}</p>

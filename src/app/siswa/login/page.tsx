@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth'; 
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db } from '@/lib/firebase'; 
 import Link from 'next/link';
 import Image from 'next/image';
 import { Loader2, LogIn, Mail, Lock, School, ShieldCheck, X, RefreshCw, Eye, EyeOff } from 'lucide-react';
@@ -38,17 +39,44 @@ export default function StudentLoginPage() {
     return () => clearInterval(interval);
   }, [cooldown]);
 
-  // Handler Login
+  // Handler Login 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
 
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      router.push('/siswa/dashboard'); 
+      // Login ke Firebase Auth (Cek Email & Password)
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Cek Role di Firestore
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        
+        // Validasi Role: Harus 'siswa'
+        if (userData.role !== 'siswa') {
+           // Jika Admin/Guru coba login di sini -> TENDANG KELUAR
+           await signOut(auth); 
+           setError('Akses Ditolak: Akun ini bukan akun Siswa. Silakan login di halaman Admin.');
+           setLoading(false);
+           return;
+        }
+
+        // Jika Valid Siswa -> Masuk Dashboard
+        router.push('/siswa/dashboard'); 
+      } else {
+        // Kasus langka: User ada di Auth tapi data di Firestore hilang
+        setError('Data pengguna tidak ditemukan. Hubungi admin.');
+        setLoading(false);
+      }
+
     } catch (err: any) {
       console.error("Login Error:", err);
+      // Error handling bawaan Firebase
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
         setError('Email atau kata sandi salah. Silakan cek kembali.');
       } else if (err.code === 'auth/too-many-requests') {
@@ -94,7 +122,6 @@ export default function StudentLoginPage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 font-sans py-8 relative overflow-hidden">
-      {/* BACKGROUND IMAGE FULL SCREEN */}
         <div className="absolute inset-0 z-0">
             <Image 
                 src="/smp gelora.png" 
@@ -105,7 +132,6 @@ export default function StudentLoginPage() {
             />
          </div>
 
-      {/* Container Utama */}
       <div className="w-full max-w-5xl bg-white/90 backdrop-blur-xl rounded-[2.5rem] shadow-2xl shadow-blue-900/10 overflow-hidden flex flex-col md:flex-row border border-white/50 relative z-10">
         
         {/* BAGIAN KIRI (VISUAL) */}

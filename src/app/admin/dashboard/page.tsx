@@ -168,12 +168,32 @@ export default function AdminDashboard() {
 
   const router = useRouter();
 
-  // 1. Auth & Data Fetching
+  // 1. Auth & Data Fetching (UPDATED WITH SECURITY CHECK)
   useEffect(() => {
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push('/admin/login'); 
       } else {
+        
+        // --- LOGIKA PROTEKSI RUANGAN (BARU) ---
+        // Cek apakah user yang login benar-benar Admin
+        try {
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            
+            if (userSnap.exists()) {
+                const userData = userSnap.data();
+                if (userData.role !== 'admin' && userData.role !== 'guru') {
+                    // Jika Siswa, tendang ke dashboard siswa
+                    router.replace('/siswa/dashboard');
+                    return; // Stop loading data admin
+                }
+            }
+        } catch (error) {
+            console.error("Gagal verifikasi admin:", error);
+        }
+        // --------------------------------------
+
         setUser(currentUser);
         
         // A. Listener Laporan

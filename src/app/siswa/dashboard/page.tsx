@@ -2,11 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import Image from 'next/image';
-import Link from 'next/link';
-import { motion, AnimatePresence } from 'framer-motion';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment, getDoc } from 'firebase/firestore'; // Tambah getDoc
 import { auth, db } from '@/lib/firebase';
 import { 
   LogOut, Clock, CheckCircle, AlertCircle, FileText, Trash2, 
@@ -14,8 +11,11 @@ import {
   MessageCircle, Globe, Users, Hand, ShieldAlert, ChevronRight, LayoutDashboard, HeartCrack,
   MessageSquareQuote, PieChart, BarChart3
 } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import Link from 'next/link';
+import Image from 'next/image';
 
-// --- TIPE DATA ---
+// --- Tipe Data ---
 type LaporanSaya = {
   id: string;
   jenisKasus: string;
@@ -35,7 +35,7 @@ type ProfilSiswa = {
     stats_dibatalkan?: number; 
 };
 
-// --- HELPER FUNCTIONS ---
+// --- Helper Functions ---
 const formatDate = (timestamp: any) => {
   if (!timestamp) return "-";
   return new Date(timestamp.seconds * 1000).toLocaleDateString("id-ID", {
@@ -69,7 +69,7 @@ const getStatusBadge = (status: string) => {
     );
 };
 
-// --- SUB-COMPONENTS (UI COMPONENTS) ---
+// --- Komponen: QuotaCard ---
 const QuotaCard = ({ count }: { count: number }) => {
     const limit = 2;
     const sisa = limit - count;
@@ -82,7 +82,7 @@ const QuotaCard = ({ count }: { count: number }) => {
             className={`rounded-3xl p-6 shadow-xl shadow-blue-900/5 border relative overflow-hidden mb-6 ${
                 isFull 
                 ? 'bg-red-50 border-red-100' 
-                : 'bg-gradient-to-br from-blue-100 via-blue-200 to-blue-300 border-blue-200' 
+                : 'bg-gradient-to-br from-blue-100 via-blue-200 to-blue-300 border-blue-200'
             }`}
         >
             <div className="flex items-center justify-between mb-4 relative z-10">
@@ -97,7 +97,6 @@ const QuotaCard = ({ count }: { count: number }) => {
                 </span>
             </div>
             
-            {/* Progress Bar Container */}
             <div className="w-full bg-white/40 rounded-full h-3 mb-3 overflow-hidden backdrop-blur-sm relative z-10">
                 <div 
                     className={`h-full rounded-full transition-all duration-700 ease-out ${
@@ -114,7 +113,6 @@ const QuotaCard = ({ count }: { count: number }) => {
                 }
             </p>
 
-            {/* Dekorasi Visual */}
             {!isFull && (
                  <div className="absolute -bottom-4 -right-4 text-blue-400/20 rotate-12">
                     <FileText size={80} />
@@ -124,9 +122,11 @@ const QuotaCard = ({ count }: { count: number }) => {
     );
 };
 
+// --- Komponen Lainnya ---
 const ProfileCard = ({ user, userData, onLogout }: { user: any, userData: ProfilSiswa | null, onLogout: () => void }) => {
     const displayName = userData?.nama || user?.displayName || "Siswa";
     const initial = displayName.charAt(0).toUpperCase();
+
     return (
         <motion.div 
             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
@@ -156,6 +156,7 @@ const ProfileCard = ({ user, userData, onLogout }: { user: any, userData: Profil
 
 const StatsGrid = ({ summary }: { summary: any }) => {
     const total = summary.menunggu + summary.diproses + summary.selesai + summary.dibatalkan;
+    
     const createChartData = (count: number, color: string) => {
         const percentage = total === 0 ? 0 : (count / total) * 100;
         return `conic-gradient(${color} 0% ${percentage}%, #F3F4F6 ${percentage}% 100%)`;
@@ -200,6 +201,7 @@ const StatsGrid = ({ summary }: { summary: any }) => {
 
 const ReportList = ({ reports, onCancel }: { reports: LaporanSaya[], onCancel: (id: string) => void }) => {
     if (reports.length === 0) return <EmptyState />;
+
     return (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <AnimatePresence mode='popLayout'>
@@ -213,6 +215,7 @@ const ReportList = ({ reports, onCancel }: { reports: LaporanSaya[], onCancel: (
 
 const ReportCard = ({ item, onCancel }: { item: LaporanSaya, onCancel: (id: string) => void }) => {
     const { icon, color } = getCaseConfig(item.jenisKasus);
+
     return (
         <motion.div 
             layout 
@@ -328,7 +331,7 @@ const CancelModal = ({ isOpen, onClose, onConfirm, isCancelling }: any) => (
     </AnimatePresence>
 );
 
-// --- MAIN COMPONENT (DASHBOARD) ---
+// --- Komponen Utama ---
 export default function SiswaDashboard() {
   const [user, setUser] = useState<any>(null);
   const [userData, setUserData] = useState<ProfilSiswa | null>(null);
@@ -342,23 +345,42 @@ export default function SiswaDashboard() {
 
   const router = useRouter();
 
-  // --- Logic 1: Auth & Data Fetching (Grouped) ---
+  // --- LOGIC AUTH & DATA FETCHING (DENGAN PROTEKSI) ---
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push('/siswa/login');
       } else {
+        
+        // --- LOGIKA PROTEKSI HALAMAN ---
+        // Cek apakah yang login benar-benar Siswa
+        try {
+            const userRef = doc(db, 'users', currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            
+            if (userSnap.exists()) {
+                const data = userSnap.data();
+                if (data.role !== 'siswa') {
+                    // Jika Admin/Guru salah masuk -> Lempar ke Dashboard Admin
+                    router.replace('/admin/dashboard');
+                    return; 
+                }
+            }
+        } catch (error) {
+            console.error("Gagal verifikasi siswa:", error);
+        }
+
         setUser(currentUser);
         
-        // 1. Fetch Profil
+        // Ambil Profil
         try {
             const userDocRef = doc(db, "users", currentUser.uid);
             onSnapshot(userDocRef, (docSnap) => {
                 if (docSnap.exists()) setUserData(docSnap.data() as ProfilSiswa);
             });
-        } catch (err) { console.error("Gagal load profil:", err); }
+        } catch (err) { console.error("Gagal profil:", err); }
 
-        // 2. Fetch Riwayat Laporan
+        // Ambil List Laporan
         const qList = query(collection(db, "laporan_perundungan"), where("userId", "==", currentUser.uid), orderBy("createdAt", "desc"));
         const unsubList = onSnapshot(qList, (snapshot) => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LaporanSaya[];
@@ -366,7 +388,7 @@ export default function SiswaDashboard() {
           setLoading(false);
         });
 
-        // 3. Fetch Kuota Harian 
+        // Ambil Kuota Harian
         const today = new Date();
         today.setHours(0, 0, 0, 0); 
         
@@ -379,6 +401,7 @@ export default function SiswaDashboard() {
         const unsubQuota = onSnapshot(qQuota, (snapshot) => {
             setDailyCount(snapshot.size);
         });
+
         return () => {
             unsubList();
             unsubQuota();
@@ -388,7 +411,7 @@ export default function SiswaDashboard() {
     return () => unsubscribeAuth();
   }, [router]);
 
-  // --- Logic 2: Handlers ---
+  // Logic Handlers
   const handleLogout = async () => { await signOut(auth); router.push('/login'); };
   const openCancelModal = (id: string) => { setSelectedReportId(id); setIsModalOpen(true); };
   const closeCancelModal = () => { setIsModalOpen(false); setSelectedReportId(null); };
@@ -406,7 +429,7 @@ export default function SiswaDashboard() {
     finally { setIsCancelling(false); }
   };
 
-  // Hitung Summary Statistik
+  // Hitung Summary
   const summary = {
     menunggu: laporanList.filter(l => l.status === 'Menunggu').length,
     diproses: laporanList.filter(l => l.status === 'Diproses').length,
@@ -445,7 +468,6 @@ export default function SiswaDashboard() {
                 <p className="text-gray-600/80 text-sm mt-1">Selamat datang kembali di LAPOR AMAN.</p>
             </div>
             
-            {/* Widget Tanggal & Hari */}
             <div className="hidden md:block text-right">
                 <div className="inline-block px-4 py-2 bg-blue-400/10 backdrop-blur-md rounded-xl border border-blue-800/20">
                     <p className="text-sm font-medium text-gray-600/80">
@@ -456,14 +478,16 @@ export default function SiswaDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Sidebar (Kiri) */}
+            {/* Sidebar */}
             <div className="lg:col-span-4 space-y-0">
                 <ProfileCard user={user} userData={userData} onLogout={handleLogout} />
+                
                 <QuotaCard count={dailyCount} />
+                
                 <StatsGrid summary={summary} />
             </div>
 
-            {/* Main Content (Kanan) */}
+            {/* Main Content */}
             <div className="lg:col-span-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 gap-4">
                     <div>
@@ -481,7 +505,7 @@ export default function SiswaDashboard() {
             </div>
         </div>
 
-        {/* FAB Mobile (Tombol Tambah di HP) */}
+        {/* FAB Mobile */}
         <div className="fixed bottom-6 right-6 sm:hidden z-30">
             <Link href="/lapor" className="flex items-center justify-center w-14 h-14 bg-blue-300 text-white rounded-full shadow-xl shadow-blue-500/40 hover:scale-110 transition-transform">
                 <Plus size={28} />
