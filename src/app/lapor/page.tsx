@@ -8,7 +8,7 @@ import { motion, Variants } from 'framer-motion';
 import { auth, db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth'; 
-import imageCompression from 'browser-image-compression'; // LIBRARY KOMPRESI
+import imageCompression from 'browser-image-compression';
 
 // Definisi Tipe
 type BullyingType = {
@@ -77,22 +77,22 @@ export default function LaporPage() {
     return () => unsubscribe();
   }, []);
 
-  // --- OPTIMASI ANIMASI (Lebih Ringan & Cepat) ---
+  // --- OPTIMASI ANIMASI  ---
   const fadeInUp: Variants = {
-    hidden: { opacity: 0, y: 20 }, // Jarak gerak dikurangi
+    hidden: { opacity: 0, y: 20 }, 
     visible: { 
       opacity: 1, 
       y: 0, 
-      transition: { duration: 0.4, ease: "easeOut" } // Durasi dipercepat
+      transition: { duration: 0.4, ease: "easeOut" } 
     }
   };
 
   const scaleIn: Variants = {
-    hidden: { opacity: 0, scale: 0.95 }, // Skala awal tidak terlalu kecil
+    hidden: { opacity: 0, scale: 0.95 }, 
     visible: { 
       opacity: 1, 
       scale: 1, 
-      transition: { duration: 0.4, ease: "easeOut" } // Durasi dipercepat
+      transition: { duration: 0.4, ease: "easeOut" } 
     }
   };
 
@@ -100,8 +100,8 @@ export default function LaporPage() {
   const handleImageCompression = async (file: File) => {
     setIsCompressing(true);
     const options = {
-      maxSizeMB: 0.5, // Target 500KB
-      maxWidthOrHeight: 1280, // Resize dimensi wajar untuk HP
+      maxSizeMB: 0.5, 
+      maxWidthOrHeight: 1280, 
       useWebWorker: true,
       fileType: "image/webp"
     };
@@ -121,8 +121,8 @@ export default function LaporPage() {
   const onDrop = useCallback(async (acceptedFiles: File[]) => {
     if (acceptedFiles.length > 0) {
       const file = acceptedFiles[0];
-      setPreviewUrl(URL.createObjectURL(file)); // Tampilkan preview segera
-      const compressed = await handleImageCompression(file); // Kompres di background
+      setPreviewUrl(URL.createObjectURL(file)); 
+      const compressed = await handleImageCompression(file); 
       setBuktiGambar(compressed);
     }
   }, []);
@@ -131,7 +131,7 @@ export default function LaporPage() {
     onDrop, 
     accept: { 'image/*': ['.jpeg', '.png', '.jpg', '.webp'] },
     multiple: false,
-    maxSize: 10 * 1024 * 1024 // Limit dropzone dilonggarkan, filter di kompresi
+    maxSize: 2 * 1024 * 1024 //2MB
   });
 
   const removeImage = () => {
@@ -240,7 +240,6 @@ export default function LaporPage() {
             variants={fadeInUp}
             className="md:w-1/2 text-center md:text-left"
           >
-            {/* OPTIMASI: Hapus backdrop-blur-md, ganti dengan bg-white/80 */}
             <span className="inline-block py-1.5 px-4 rounded-full bg-white/80 border border-white/50 text-gray-600 text-sm font-bold mb-6 shadow-sm">
                Layanan Pengaduan Siswa
             </span>
@@ -262,7 +261,6 @@ export default function LaporPage() {
             <div className="relative w-full max-w-lg">
               <div className="absolute top-0 right-0 w-full h-full bg-gradient-to-br from-blue-100 to-orange-50 rounded-[3rem] transform rotate-6 scale-95 z-0"></div>
                 <div className="relative z-10 rounded-[2.5rem] overflow-hidden shadow-2xl border-4 border-white">
-                  {/* OPTIMASI: Hapus hover scale dan transition yang berat */}
                   <Image 
                     src="/Bullying.webp" 
                     alt="Stop Bullying" 
@@ -283,14 +281,12 @@ export default function LaporPage() {
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2, duration: 0.4 }} // Optimasi durasi
-          // OPTIMASI: Hapus backdrop-blur-sm
+          transition={{ delay: 0.2, duration: 0.4 }} 
           className="bg-white p-6 md:p-10 lg:p-14 rounded-[2.5rem] shadow-2xl border border-white/50 max-w-8xl mx-auto"
         >
           
           {submitted ? (
             <div className="text-center py-20 animate-fade-in">
-              {/* Optimasi: Bounce lebih sederhana */}
               <div className="w-28 h-28 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 animate-bounce-slow">
                 <CheckCircle size={64} />
               </div>
@@ -353,7 +349,7 @@ export default function LaporPage() {
                       <motion.button
                         key={type.id}
                         type="button"
-                        whileHover={{ scale: 1.02 }} // Scale dikurangi agar lebih ringan
+                        whileHover={{ scale: 1.02 }}
                         whileTap={{ scale: 0.98 }}
                         disabled={dailyCount >= 2} 
                         onClick={() => setJenisKasus(type.id)}
@@ -471,7 +467,7 @@ export default function LaporPage() {
                             <UploadCloud size={40} />
                         </div>
                         <p className="text-lg font-bold text-gray-600 group-hover:text-blue-400">Klik untuk upload atau seret gambar ke sini</p>
-                        <p className="text-sm text-gray-400 mt-2 font-medium">Otomatis diperkecil agar hemat kuota (Max 5MB)</p>
+                        <p className="text-sm text-gray-400 mt-2 font-medium">Otomatis diperkecil agar hemat kuota (Max 2MB)</p>
                         </div>
                     )}
                     </div>
