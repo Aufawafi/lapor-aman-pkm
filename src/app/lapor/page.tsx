@@ -7,7 +7,7 @@ import { Hand, MessageCircle, Globe, Users, HeartCrack, UploadCloud, X, CheckCir
 import { motion, Variants } from 'framer-motion';
 import { auth, db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp, query, where, getDocs } from 'firebase/firestore';
-import { onAuthStateChanged } from 'firebase/auth'; // Import tambahan untuk memastikan user terload
+import { onAuthStateChanged } from 'firebase/auth'; 
 
 // Definisi Tipe
 type BullyingType = {
@@ -35,14 +35,14 @@ export default function LaporPage() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   
-  // UPDATE: State untuk menyimpan info kuota
+  // UState untuk menyimpan info kuota
   const [dailyCount, setDailyCount] = useState<number>(0);
 
   useEffect(() => {
     setIsMounted(true);
   }, []);
 
-  // UPDATE: Pindahkan fungsi checkDailyLimit ke luar useEffect atau gunakan useCallback agar bisa dipanggil di useEffect
+  // Pindahkan fungsi checkDailyLimit ke luar useEffect atau gunakan useCallback agar bisa dipanggil di useEffect
   // Kita biarkan fungsinya di sini tapi kita panggil saat komponen mount
   const checkDailyLimit = async (userId: string) => {
     const today = new Date();
@@ -58,11 +58,11 @@ export default function LaporPage() {
     return querySnapshot.size; 
   };
 
-  // UPDATE: Effect untuk mengambil kuota saat halaman dimuat
+  // Effect untuk mengambil kuota saat halaman dimuat
   useEffect(() => {
     if (!isMounted) return;
 
-    // Menggunakan onAuthStateChanged untuk memastikan kita mendapatkan user ID yang valid
+    // Gunakan onAuthStateChanged untuk memastikan kita mendapatkan user ID yang valid
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
         if (user) {
             try {
@@ -161,12 +161,12 @@ export default function LaporPage() {
     setLoading(true);
 
     try {
-      // Cek ulang limit saat tombol ditekan (preventif jika user membuka tab lama)
+      // Cek ulang limit saat tombol ditekan 
       const currentCount = await checkDailyLimit(user.uid);
       
       if (currentCount >= 2) {
         setLoading(false);
-        setDailyCount(currentCount); // Update UI dengan data terbaru
+        setDailyCount(currentCount); 
         alert("Batas Harian Tercapai. Anda hanya dapat mengirim maksimal 2 laporan per hari.");
         return;
       }
@@ -195,7 +195,6 @@ export default function LaporPage() {
         createdAt: serverTimestamp(),
       });
 
-      // Update count lokal agar UI langsung berubah tanpa refresh
       setDailyCount(prev => prev + 1);
 
       setLoading(false);
@@ -333,7 +332,6 @@ export default function LaporPage() {
                         type="button"
                         whileHover={{ scale: 1.05 }}
                         whileTap={{ scale: 0.95 }}
-                        // UPDATE: Disable tombol jika kuota habis
                         disabled={dailyCount >= 2} 
                         onClick={() => setJenisKasus(type.id)}
                         className={`flex flex-col items-center justify-center p-6 rounded-3xl border-2 transition-all duration-300 ${
@@ -364,7 +362,7 @@ export default function LaporPage() {
                     id="lokasi"
                     value={lokasi}
                     onChange={(e) => setLokasi(e.target.value)}
-                    disabled={dailyCount >= 2} // Disable jika penuh
+                    disabled={dailyCount >= 2} 
                     className="w-full px-6 py-4 bg-gray-50 text-gray-800 border border-gray-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparant transition-all text-base font-medium shadow-sm disabled:bg-gray-200"
                     placeholder="Contoh: Di Kantin, Di Kelas X-A, Area Parkir"
                     required
@@ -380,7 +378,7 @@ export default function LaporPage() {
                     id="deskripsi"
                     value={deskripsi}
                     onChange={(e) => setDeskripsi(e.target.value)}
-                    disabled={dailyCount >= 2} // Disable jika penuh
+                    disabled={dailyCount >= 2} 
                     rows={5} 
                     className="w-full px-6 py-4 bg-gray-50 text-gray-800 border border-gray-200 rounded-2xl focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent transition-all text-base font-medium shadow-sm disabled:bg-gray-200"
                     placeholder="Ceritakan apa yang terjadi, kapan waktunya, dan siapa yang terlibat..."
