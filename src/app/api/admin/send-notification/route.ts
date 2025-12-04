@@ -8,10 +8,7 @@ export async function POST(request: Request) {
     if (!email) {
       return NextResponse.json({ error: 'Email tujuan tidak ditemukan' }, { status: 400 });
     }
-    console.log("Cek User:", process.env.GMAIL_USER);
-    console.log("Cek Pass (Cuma 3 huruf depan):", process.env.GMAIL_APP_PASSWORD?.substring(0, 3));
     
-    // Konfigurasi Transporter (Menggunakan akun Gmail sekolah yang ada di .env)
     const transporter = nodemailer.createTransport({
       service: 'gmail', 
       auth: {
@@ -20,7 +17,6 @@ export async function POST(request: Request) {
       },
     });
 
-    // Desain Template Email HTML
     const mailOptions = {
       from: '"Admin Lapor Aman" <no-reply@smpgelora.sch.id>',
       to: email,
@@ -62,7 +58,8 @@ export async function POST(request: Request) {
     await transporter.sendMail(mailOptions);
 
     return NextResponse.json({ message: 'Email notifikasi berhasil dikirim' });
-  } catch (error: any) {
+  } catch (err) {
+    const error = err as Error;
     console.error('Gagal mengirim email:', error);
     return NextResponse.json({ error: error.message || 'Gagal mengirim email' }, { status: 500 });
   }
