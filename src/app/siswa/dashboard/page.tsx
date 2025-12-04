@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, JSX } from 'react';
 import { useRouter } from 'next/navigation';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, deleteDoc, increment, getDoc } from 'firebase/firestore'; // Tambah getDoc
+import { User as FirebaseUser, onAuthStateChanged, signOut } from 'firebase/auth';
+import { 
+  collection, query, where, orderBy, onSnapshot, doc, updateDoc, 
+  deleteDoc, increment, getDoc, writeBatch, Timestamp 
+} from 'firebase/firestore'; 
 import { auth, db } from '@/lib/firebase';
 import { 
   LogOut, Clock, CheckCircle, AlertCircle, FileText, Trash2, 
@@ -19,8 +22,8 @@ import Image from 'next/image';
 type LaporanSaya = {
   id: string;
   jenisKasus: string;
-  status: string;
-  createdAt: any;
+  status: 'Menunggu' | 'Diproses' | 'Selesai' | 'Dibatalkan';
+  createdAt: Timestamp;
   deskripsi: string;
   lokasi?: string;
   imageUrl?: string;
@@ -35,12 +38,30 @@ type ProfilSiswa = {
     stats_dibatalkan?: number; 
 };
 
+type SummaryStats = {
+    menunggu: number;
+    diproses: number;
+    selesai: number;
+    dibatalkan: number;
+}
+
 // --- Helper Functions ---
-const formatDate = (timestamp: any) => {
+const formatDate = (timestamp: Timestamp | null) => {
   if (!timestamp) return "-";
   return new Date(timestamp.seconds * 1000).toLocaleDateString("id-ID", {
     day: 'numeric', month: 'short', year: 'numeric'
   });
+};
+
+const getDaysRemaining = (createdAt: Timestamp | null) => {
+    if (!createdAt) return 0;
+    const createdDate = new Date(createdAt.seconds * 1000);
+    const expiryDate = new Date(createdDate);
+    expiryDate.setDate(createdDate.getDate() + 25);
+    const today = new Date();
+    const diffTime = expiryDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
 };
 
 const getCaseConfig = (jenis: string) => {
@@ -54,8 +75,8 @@ const getCaseConfig = (jenis: string) => {
     }
 };
 
-const getStatusBadge = (status: string) => {
-    const configs: any = {
+const getStatusBadge = (status: LaporanSaya['status']) => {
+    const configs: Record<LaporanSaya['status'], { style: string, icon: JSX.Element }> = {
         Diproses: { style: "bg-orange-50 text-orange-600 ring-orange-500/30", icon: <Clock size={12} /> },
         Selesai: { style: "bg-green-50 text-green-600 ring-green-500/30", icon: <CheckCircle size={12} /> },
         Dibatalkan: { style: "bg-red-50 text-red-600 ring-red-500/30", icon: <XCircle size={12} /> },
@@ -69,7 +90,7 @@ const getStatusBadge = (status: string) => {
     );
 };
 
-// --- Komponen: QuotaCard ---
+// --- Komponen ---
 const QuotaCard = ({ count }: { count: number }) => {
     const limit = 2;
     const sisa = limit - count;
@@ -122,8 +143,7 @@ const QuotaCard = ({ count }: { count: number }) => {
     );
 };
 
-// --- Komponen Lainnya ---
-const ProfileCard = ({ user, userData, onLogout }: { user: any, userData: ProfilSiswa | null, onLogout: () => void }) => {
+const ProfileCard = ({ user, userData, onLogout }: { user: FirebaseUser | null, userData: ProfilSiswa | null, onLogout: () => void }) => {
     const displayName = userData?.nama || user?.displayName || "Siswa";
     const initial = displayName.charAt(0).toUpperCase();
 
@@ -154,7 +174,7 @@ const ProfileCard = ({ user, userData, onLogout }: { user: any, userData: Profil
     );
 };
 
-const StatsGrid = ({ summary }: { summary: any }) => {
+const StatsGrid = ({ summary }: { summary: SummaryStats }) => {
     const total = summary.menunggu + summary.diproses + summary.selesai + summary.dibatalkan;
     
     const createChartData = (count: number, color: string) => {
@@ -163,10 +183,10 @@ const StatsGrid = ({ summary }: { summary: any }) => {
     };
 
     const stats = [
-        { label: "Menunggu", count: summary.menunggu, color: "#6B7280", gradient: createChartData(summary.menunggu, "#6B7280"), textColor: "text-gray-600", bgColor: "bg-gray-50" },
-        { label: "Diproses", count: summary.diproses, color: "#F97316", gradient: createChartData(summary.diproses, "#F97316"), textColor: "text-orange-600", bgColor: "bg-orange-50" },
-        { label: "Selesai", count: summary.selesai, color: "#22C55E", gradient: createChartData(summary.selesai, "#22C55E"), textColor: "text-green-600", bgColor: "bg-green-50" },
-        { label: "Dibatalkan", count: summary.dibatalkan, color: "#EF4444", gradient: createChartData(summary.dibatalkan, "#EF4444"), textColor: "text-red-600", bgColor: "bg-red-50" }
+        { label: "Menunggu", count: summary.menunggu, gradient: createChartData(summary.menunggu, "#6B7280"), textColor: "text-gray-600", bgColor: "bg-gray-50" },
+        { label: "Diproses", count: summary.diproses, gradient: createChartData(summary.diproses, "#F97316"), textColor: "text-orange-600", bgColor: "bg-orange-50" },
+        { label: "Selesai", count: summary.selesai, gradient: createChartData(summary.selesai, "#22C55E"), textColor: "text-green-600", bgColor: "bg-green-50" },
+        { label: "Dibatalkan", count: summary.dibatalkan, gradient: createChartData(summary.dibatalkan, "#EF4444"), textColor: "text-red-600", bgColor: "bg-red-50" }
     ];
 
     return (
@@ -196,20 +216,6 @@ const StatsGrid = ({ summary }: { summary: any }) => {
                 ))}
             </div>
         </motion.div>
-    );
-};
-
-const ReportList = ({ reports, onCancel }: { reports: LaporanSaya[], onCancel: (id: string) => void }) => {
-    if (reports.length === 0) return <EmptyState />;
-
-    return (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <AnimatePresence mode='popLayout'>
-                {reports.map((item) => (
-                    <ReportCard key={item.id} item={item} onCancel={onCancel} />
-                ))}
-            </AnimatePresence>
-        </div>
     );
 };
 
@@ -253,7 +259,7 @@ const ReportCard = ({ item, onCancel }: { item: LaporanSaya, onCancel: (id: stri
                         <span className="truncate max-w-[350px]">{item.lokasi}</span>
                     </div>
                 )}
-                <p className="text-sm text-gray-600 line-clamp-3 leading-relaxed mb-4">"{item.deskripsi}"</p>
+                <p className="text-sm text-gray-600 line-clamp-3 leading-relaxed mb-4">&quot;{item.deskripsi}&quot;</p>
 
                 {item.catatanAdmin && (
                     <div className="mt-auto bg-blue-50 rounded-2xl p-4 border border-blue-100 relative group/note hover:bg-blue-100/50 transition-colors">
@@ -263,12 +269,21 @@ const ReportCard = ({ item, onCancel }: { item: LaporanSaya, onCancel: (id: stri
                         <div className="flex gap-3 items-start pt-2">
                             <MessageSquareQuote size={18} className="text-blue-600 flex-shrink-0 mt-0.5" />
                             <p className="text-xs text-blue-900 leading-relaxed font-medium">
-                                "{item.catatanAdmin}"
+                                &quot;{item.catatanAdmin}&quot;
                             </p>
                         </div>
                     </div>
                 )}
             </div>
+
+            {item.status === 'Selesai' && (
+                <div className="px-5 pb-4 mt-1">
+                    <div className="inline-flex items-center gap-1.5 bg-red-50 text-red-600 px-3 py-1.5 rounded-xl text-[10px] font-medium border border-red-100 animate-pulse w-full justify-center">
+                        <Trash2 size={12} />
+                        <span>Akan dihapus otomatis dalam {getDaysRemaining(item.createdAt)} hari</span>
+                    </div>
+                </div>
+            )}
 
             {item.status === 'Menunggu' && (
                 <div className="px-5 pb-5 mt-3 pt-3 border-t border-gray-200">
@@ -296,7 +311,7 @@ const EmptyState = () => (
     </motion.div>
 );
 
-const CancelModal = ({ isOpen, onClose, onConfirm, isCancelling }: any) => (
+const CancelModal = ({ isOpen, onClose, onConfirm, isCancelling }: { isOpen: boolean, onClose: () => void, onConfirm: () => void, isCancelling: boolean }) => (
     <AnimatePresence>
         {isOpen && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 px-6">
@@ -314,7 +329,7 @@ const CancelModal = ({ isOpen, onClose, onConfirm, isCancelling }: any) => (
                         </div>
                         <h3 className="text-xl font-bold text-gray-800 mb-2">Batalkan laporan ini?</h3>
                         <p className="text-sm text-gray-600 mb-8 leading-relaxed px-2">
-                            Laporan akan dihapus permanen dari daftar Anda.
+                            Laporan akan dihapus permanen dari daftar Anda, namun tetap tercatat sebagai laporan dibatalkan.
                         </p>
                         <div className="flex gap-3">
                             <button onClick={onClose} disabled={isCancelling} className="flex-1 py-3.5 px-4 bg-white text-gray-600 rounded-2xl font-bold text-sm hover:bg-gray-100 transition-colors disabled:opacity-50">
@@ -333,27 +348,48 @@ const CancelModal = ({ isOpen, onClose, onConfirm, isCancelling }: any) => (
 
 // --- Komponen Utama ---
 export default function SiswaDashboard() {
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<ProfilSiswa | null>(null);
   const [laporanList, setLaporanList] = useState<LaporanSaya[]>([]);
   const [dailyCount, setDailyCount] = useState(0); 
   const [loading, setLoading] = useState(true);
-  
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [isCancelling, setIsCancelling] = useState(false);
-
   const router = useRouter();
 
-  // --- LOGIC AUTH & DATA FETCHING (DENGAN PROTEKSI) ---
+  const autoDeleteOldReports = async (uid: string) => {
+    try {
+      const daysAgo = 25; 
+      const dateThreshold = new Date();
+      dateThreshold.setDate(dateThreshold.getDate() - daysAgo);
+      
+      const q = query(
+        collection(db, "laporan_perundungan"),
+        where("userId", "==", uid),
+        where("status", "==", "Selesai"),
+        where("createdAt", "<=", Timestamp.fromDate(dateThreshold))
+      );
+
+      const { getDocs } = await import('firebase/firestore'); 
+      const oldReportsSnap = await getDocs(q);
+
+      if (oldReportsSnap.empty) return; 
+
+      const batch = writeBatch(db);
+      oldReportsSnap.forEach((doc) => batch.delete(doc.ref));
+      await batch.commit();
+
+    } catch (error) {
+      console.error("Gagal auto-delete siswa:", error);
+    }
+  };
+
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push('/siswa/login');
       } else {
-        
-        // --- LOGIKA PROTEKSI HALAMAN ---
-        // Cek apakah yang login benar-benar Siswa
         try {
             const userRef = doc(db, 'users', currentUser.uid);
             const userSnap = await getDoc(userRef);
@@ -361,7 +397,6 @@ export default function SiswaDashboard() {
             if (userSnap.exists()) {
                 const data = userSnap.data();
                 if (data.role !== 'siswa') {
-                    // Jika Admin/Guru salah masuk -> Lempar ke Dashboard Admin
                     router.replace('/admin/dashboard');
                     return; 
                 }
@@ -371,16 +406,13 @@ export default function SiswaDashboard() {
         }
 
         setUser(currentUser);
+        autoDeleteOldReports(currentUser.uid);
         
-        // Ambil Profil
-        try {
-            const userDocRef = doc(db, "users", currentUser.uid);
-            onSnapshot(userDocRef, (docSnap) => {
-                if (docSnap.exists()) setUserData(docSnap.data() as ProfilSiswa);
-            });
-        } catch (err) { console.error("Gagal profil:", err); }
+        const userDocRef = doc(db, "users", currentUser.uid);
+        const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
+            if (docSnap.exists()) setUserData(docSnap.data() as ProfilSiswa);
+        });
 
-        // Ambil List Laporan
         const qList = query(collection(db, "laporan_perundungan"), where("userId", "==", currentUser.uid), orderBy("createdAt", "desc"));
         const unsubList = onSnapshot(qList, (snapshot) => {
           const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })) as LaporanSaya[];
@@ -388,21 +420,17 @@ export default function SiswaDashboard() {
           setLoading(false);
         });
 
-        // Ambil Kuota Harian
         const today = new Date();
         today.setHours(0, 0, 0, 0); 
-        
         const qQuota = query(
             collection(db, "laporan_perundungan"),
             where("userId", "==", currentUser.uid),
             where("createdAt", ">=", today)
         );
-        
-        const unsubQuota = onSnapshot(qQuota, (snapshot) => {
-            setDailyCount(snapshot.size);
-        });
+        const unsubQuota = onSnapshot(qQuota, (snapshot) => setDailyCount(snapshot.size));
 
         return () => {
+            unsubProfile();
             unsubList();
             unsubQuota();
         };
@@ -411,7 +439,6 @@ export default function SiswaDashboard() {
     return () => unsubscribeAuth();
   }, [router]);
 
-  // Logic Handlers
   const handleLogout = async () => { await signOut(auth); router.push('/login'); };
   const openCancelModal = (id: string) => { setSelectedReportId(id); setIsModalOpen(true); };
   const closeCancelModal = () => { setIsModalOpen(false); setSelectedReportId(null); };
@@ -429,13 +456,12 @@ export default function SiswaDashboard() {
     finally { setIsCancelling(false); }
   };
 
-  // Hitung Summary
-  const summary = {
+  const summary = useMemo(() => ({
     menunggu: laporanList.filter(l => l.status === 'Menunggu').length,
     diproses: laporanList.filter(l => l.status === 'Diproses').length,
     selesai: laporanList.filter(l => l.status === 'Selesai').length,
     dibatalkan: userData?.stats_dibatalkan || 0,
-  };
+  }), [laporanList, userData]);
 
   const displayName = userData?.nama || user?.displayName || "Siswa";
 
@@ -450,15 +476,12 @@ export default function SiswaDashboard() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] font-sans pb-24 relative">
-      
-      {/* Decoration Background */}
       <div className="absolute top-0 inset-x-0 h-[22rem] bg-gradient-to-br from-blue-100 via-blue-200 to-blue-300 rounded-b-[3rem] shadow-lg z-0">
         <div className="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')]"></div>
       </div>
       
       <main className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
-        {/* Header Section */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 pt-4 gap-4 text-white">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 pt-4 gap-4">
             <div>
                 <div className="flex items-center gap-2 mb-1 text-gray-600/80">
                     <LayoutDashboard size={18} />
@@ -478,16 +501,12 @@ export default function SiswaDashboard() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-            {/* Sidebar */}
             <div className="lg:col-span-4 space-y-0">
                 <ProfileCard user={user} userData={userData} onLogout={handleLogout} />
-                
                 <QuotaCard count={dailyCount} />
-                
                 <StatsGrid summary={summary} />
             </div>
 
-            {/* Main Content */}
             <div className="lg:col-span-8">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end mb-6 gap-4">
                     <div>
@@ -496,21 +515,32 @@ export default function SiswaDashboard() {
                         </h2>
                         <p className="text-sm text-gray-600/80 mt-1">Pantau status laporan yang telah Anda kirim.</p>
                     </div>
-                    <Link href="/lapor" className="hidden sm:inline-flex items-center gap-2 bg-white text-gray-600 px-6 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-gray-900/20 hover:bg-gray-50 hover:scale-105 transition-all">
-                        <Plus size={18} strokeWidth={3} /> Buat Laporan Baru
-                    </Link>
+                    {dailyCount < 2 &&
+                        <Link href="/lapor" className="hidden sm:inline-flex items-center gap-2 bg-white text-gray-600 px-6 py-3 rounded-2xl text-sm font-bold shadow-lg shadow-gray-900/20 hover:bg-gray-50 hover:scale-105 transition-all">
+                            <Plus size={18} strokeWidth={3} /> Buat Laporan Baru
+                        </Link>
+                    }
                 </div>
                 
-                <ReportList reports={laporanList} onCancel={openCancelModal} />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <AnimatePresence>
+                        {laporanList.length > 0 ? (
+                            laporanList.map((item) => <ReportCard key={item.id} item={item} onCancel={openCancelModal} />)
+                        ) : (
+                            <EmptyState />
+                        )}
+                    </AnimatePresence>
+                </div>
             </div>
         </div>
 
-        {/* FAB Mobile */}
-        <div className="fixed bottom-6 right-6 sm:hidden z-30">
-            <Link href="/lapor" className="flex items-center justify-center w-14 h-14 bg-blue-300 text-white rounded-full shadow-xl shadow-blue-500/40 hover:scale-110 transition-transform">
-                <Plus size={28} />
-            </Link>
-        </div>
+        {dailyCount < 2 &&
+            <div className="fixed bottom-6 right-6 sm:hidden z-30">
+                <Link href="/lapor" className="flex items-center justify-center w-14 h-14 bg-blue-300 text-white rounded-full shadow-xl shadow-blue-500/40 hover:scale-110 transition-transform">
+                    <Plus size={28} />
+                </Link>
+            </div>
+        }
       </main>
 
       <CancelModal 
