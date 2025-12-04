@@ -10,7 +10,7 @@ import {
   LogOut, Clock, Calendar, Search, Filter, ChevronDown, User, 
   LayoutDashboard, FileText, Image as ImageIcon, Loader2, 
   Hand, MessageCircle, Globe, Users, HeartCrack, 
-  ShieldAlert, CheckCircle2, AlertTriangle, MapPin, UsersRound, ShieldCheck, PieChart, CheckCircle, AlertCircle, Shield, Trash2
+  ShieldAlert, MapPin, UsersRound, ShieldCheck, PieChart, CheckCircle, AlertCircle, Shield, Trash2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
